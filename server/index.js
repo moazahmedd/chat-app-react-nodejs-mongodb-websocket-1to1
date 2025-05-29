@@ -3,6 +3,7 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const authRoutes = require("./routes/auth");
 const messageRoutes = require("./routes/messages");
+const { addUser, removeUser, getUserSocketId, getAllUsers, setChatSocket } = require("./utils/userState");
 const app = express();
 const socket = require("socket.io");
 require("dotenv").config();
@@ -16,7 +17,7 @@ mongoose
     useUnifiedTopology: true,
   })
   .then(() => {
-    console.log("DB Connetion Successfull");
+    console.log("=== DB Connection Successful ===");
   })
   .catch((err) => {
     console.log(err.message);
@@ -29,10 +30,13 @@ app.get("/ping", (_req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 
+
+
 const server = app.listen(process.env.PORT, () =>
-  console.log(`Server started on ${process.env.PORT}`)
+  console.log(`=== Server started on ${process.env.PORT} ===`)
 );
 
+  // Initialize WebSocket server after HTTP server starts
 const io = socket(server, {
   cors: {
     origin: "http://localhost:3000",
@@ -40,27 +44,16 @@ const io = socket(server, {
   },
 });
 
-console.log("\n=== WebSocket Server Initialization ===");
-console.log("Starting Socket.io server with CORS configuration:");
-console.log("Allowed origin:", "http://localhost:3000");
-console.log("Credentials enabled:", true);
-
-// Create a Map to track online users
-global.onlineUsers = new Map();
-console.log("\n=== Online Users Tracking ===");
-console.log("Initialized onlineUsers Map to track connected users");
-
-// Reference to the Map
-const onlineUsers = global.onlineUsers;
+console.log("\n=== WebSocket Server Initialized ===");
+console.log("=== Initialized user state management ===");
 
 // Connection handler
 io.on("connection", (socket) => {
   console.log("\n=== New Connection ===");
   console.log("New client connected with socket ID:", socket.id);
   
-  // Store the socket globally
-  global.chatSocket = socket;
-  console.log("Global chatSocket set to:", socket.id);
+  // Store the socket
+  setChatSocket(socket);
 
   // User join event
   socket.on("add-user", (userId) => {
@@ -68,10 +61,10 @@ io.on("connection", (socket) => {
     console.log("User ID:", userId, "is joining the chat");
     console.log("Socket ID:", socket.id);
 
-    // Add user to online users map
-    onlineUsers.set(userId, socket.id);
+    // Add user to online users
+    const users = addUser(userId, socket.id);
     console.log("Added user to onlineUsers Map:");
-    console.log("Current online users:", Array.from(onlineUsers.entries()));
+    console.log("Current online users:", users);
   });
 
   // Message sending event
@@ -80,7 +73,7 @@ io.on("connection", (socket) => {
     console.log("Message data received:", data);
     
     // Get recipient's socket ID
-    const sendUserSocket = onlineUsers.get(data.to);
+    const sendUserSocket = getUserSocketId(data.to);
     console.log("Looking for recipient with ID:", data.to);
     console.log("Found recipient socket ID:", sendUserSocket);
 
@@ -93,17 +86,30 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Remove user event
+  socket.on("remove-user", (userId, socketId) => {
+    console.log("\n=== Remove User Event ===");
+    console.log("User ID:", userId, "is leaving the chat");
+    console.log("Socket ID:", socket.id);
+    
+    // Remove user from online users
+    // Not calling remove users function here as its called in logout API.
+    console.log("Removed user from onlineUsers Map:");
+    const users = getAllUsers();
+    console.log("Current online users:", users);
+  });
+
   // Handle disconnection
   socket.on("disconnect", () => {
     console.log("\n=== Disconnection Event ===");
     console.log("Client disconnected with socket ID:", socket.id);
     
     // Remove user from online users if they exist
-    const disconnectedUser = Array.from(onlineUsers.entries()).find(([_, socketId]) => socketId === socket.id);
-    if (disconnectedUser) {
-      onlineUsers.delete(disconnectedUser[0]);
-      console.log("Removed disconnected user from online users");
-      console.log("Current online users:", Array.from(onlineUsers.entries()));
+    const userId = removeUser(socket.id);
+    if (userId) {
+      console.log("Removed disconnected user:", userId);
+      console.log("Current online users:", getAllUsers());
     }
   });
 });
+

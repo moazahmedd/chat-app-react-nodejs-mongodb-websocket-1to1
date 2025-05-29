@@ -1,5 +1,6 @@
 const User = require("../models/userModel");
 const bcrypt = require("bcrypt");
+const { removeUser, getUserSocketId } = require("../utils/userState");
 
 module.exports.login = async (req, res, next) => {
   try {
@@ -77,7 +78,14 @@ module.exports.setAvatar = async (req, res, next) => {
 module.exports.logOut = (req, res, next) => {
   try {
     if (!req.params.id) return res.json({ msg: "User id is required " });
-    onlineUsers.delete(req.params.id);
+    
+    // Get the socket ID for this user
+    const socketId = getUserSocketId(req.params.id);
+    if (socketId) {
+      // Remove user using their socket ID
+      removeUser(socketId);
+    }
+    
     return res.status(200).send();
   } catch (ex) {
     next(ex);
